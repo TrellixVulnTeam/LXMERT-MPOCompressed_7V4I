@@ -55,6 +55,7 @@ class VQA:
             load_lxmert_qa(args.load_lxmert_qa, self.model,
                            label2ans=self.train_tuple.dataset.label2ans)
             print("loading weights for fine-tuning")
+            self.model.from_pretrained_mpo()
         
         # GPU options
         self.model = self.model.cuda()

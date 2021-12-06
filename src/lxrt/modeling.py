@@ -482,6 +482,7 @@ class BertAttOutput(nn.Module):
 class BertCrossattLayer(nn.Module):
     def __init__(self, config, use_mpo=False):
         super().__init__()
+        self.use_mpo = use_mpo
         self.att = BertAttention(config, use_mpo)
         self.output = BertAttOutput(config, use_mpo)
 
@@ -490,10 +491,16 @@ class BertCrossattLayer(nn.Module):
         attention_output = self.output(output, input_tensor)
         return attention_output
 
+    def from_pretrained_mpo(self):
+        if self.use_mpo:
+            self.att.from_pretrained_mpo()
+            self.output.from_pretrained_mpo()
+
 
 class BertSelfattLayer(nn.Module):
     def __init__(self, config, use_mpo=False):
         super(BertSelfattLayer, self).__init__()
+        self.use_mpo = use_mpo
         self.self = BertAttention(config, use_mpo)
         self.output = BertAttOutput(config, use_mpo)
 
@@ -502,6 +509,11 @@ class BertSelfattLayer(nn.Module):
         self_output = self.self(input_tensor, input_tensor, attention_mask)
         attention_output = self.output(self_output, input_tensor)
         return attention_output
+
+    def from_pretrained_mpo(self):
+        if self.use_mpo:
+            self.self.from_pretrained_mpo()
+            self.output.from_pretrained_mpo()
 
 
 class BertIntermediate(nn.Module):
@@ -610,6 +622,7 @@ class BertOutput(nn.Module):
 class BertLayer(nn.Module):
     def __init__(self, config, use_mpo=False):
         super(BertLayer, self).__init__()
+        self.use_mpo = use_mpo
         self.attention = BertSelfattLayer(config, use_mpo)
         self.intermediate = BertIntermediate(config, use_mpo)
         self.output = BertOutput(config, use_mpo)
@@ -619,6 +632,12 @@ class BertLayer(nn.Module):
         intermediate_output = self.intermediate(attention_output)
         layer_output = self.output(intermediate_output, attention_output)
         return layer_output
+
+    def from_pretrained_mpo(self):
+        if self.use_mpo:
+            self.attention.from_pretrained_mpo()
+            self.intermediate.from_pretrained_mpo()
+            self.output.from_pretrained_mpo()
 
 
 """
@@ -632,6 +651,7 @@ class LXRTXLayer(nn.Module):
     def __init__(self, config, use_mpo=False):
         super().__init__()
         # The cross-attention Layer
+        self.use_mpo = use_mpo
         self.visual_attention = BertCrossattLayer(config)
 
         # Self-attention Layers
@@ -760,6 +780,11 @@ class LXRTEncoder(nn.Module):
                                                   visn_feats, visn_attention_mask)
 
         return lang_feats, visn_feats
+
+    def from_pretrained_mpo(self):
+        for layer_module in self.layer:
+            layer_module.from_pretrained_mpo()
+            print("Loading MPO Weight From Pretrained")
 
 
 class BertPooler(nn.Module):
@@ -1081,6 +1106,8 @@ class LXRTModel(BertPreTrainedModel):
 
         return (lang_feats, visn_feats), pooled_output
 
+    def from_pretrained_mpo(self):
+        self.encoder.from_pretrained_mpo()
 
 class LXRTPretraining(BertPreTrainedModel):
     def __init__(self,
@@ -1184,6 +1211,9 @@ class LXRTPretraining(BertPreTrainedModel):
             losses += (answer_loss.detach(),)
         return total_loss, torch.stack(losses).unsqueeze(0), answer_score.detach()
 
+    def from_pretrained_mpo(self):
+        self.bert.from_pretrained_mpo()
+
 
 class LXRTFeatureExtraction(BertPreTrainedModel):
     """
@@ -1211,4 +1241,7 @@ class LXRTFeatureExtraction(BertPreTrainedModel):
             return feat_seq, pooled_output
         elif 'l' in self.mode or 'r' in self.mode:
             return feat_seq
+
+    def from_pretrained_mpo(self):
+        self.bert.from_pretrained_mpo()
 

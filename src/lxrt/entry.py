@@ -159,6 +159,8 @@ class LXRTEncoder(nn.Module):
         # Load weights to model
         self.model.load_state_dict(state_dict, strict=False)
 
+    def from_pretrained_mpo(self):
+        self.model.from_pretrained_mpo()
 
 
 

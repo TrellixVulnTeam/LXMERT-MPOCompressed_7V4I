@@ -46,4 +46,6 @@ class VQAModel(nn.Module):
 
         return logit
 
+    def from_pretrained_mpo(self):
+        self.lxrt_encoder.from_pretrained_mpo()
 

@@ -50,13 +50,16 @@ class VQA:
         # Load pre-trained weights
         if args.load_lxmert is not None:
             self.model.lxrt_encoder.load(args.load_lxmert)
+            print("loading weights from pretrained")
         if args.load_lxmert_qa is not None:
             load_lxmert_qa(args.load_lxmert_qa, self.model,
                            label2ans=self.train_tuple.dataset.label2ans)
+            print("loading weights for fine-tuning")
         
         # GPU options
         self.model = self.model.cuda()
         if args.multiGPU:
+            print("using multiple gpus!")
             self.model.lxrt_encoder.multi_gpu()
 
         # Loss and Optimizer

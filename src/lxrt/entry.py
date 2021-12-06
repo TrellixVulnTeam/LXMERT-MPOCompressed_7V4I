@@ -83,16 +83,24 @@ class LXRTEncoder(nn.Module):
         self.max_seq_length = max_seq_length
         set_visual_config(args)
 
-        # Using the bert tokenizer
+        # # Using the bert tokenizer
         self.tokenizer = BertTokenizer.from_pretrained(
             "bert-base-uncased",
             do_lower_case=True
         )
 
+        # # Build LXRT Model
+        # self.model = VisualBertForLXRFeature.from_pretrained(
+        #     "bert-base-uncased",
+        #     mode=mode
+        # )
+
         # Build LXRT Model
+        arg_dict = {"mpo_layers":"attention"}
         self.model = VisualBertForLXRFeature.from_pretrained(
-            "bert-base-uncased",
-            mode=mode
+            "data/bert-base-uncased.tar.gz",
+            arg_dict=arg_dict,
+            mode=mode,
         )
 
         if args.from_scratch:

@@ -313,15 +313,18 @@ class BertAttention(nn.Module):
 
         ## modified
         # if 'attention' in config.mpo_layers:
-        if self.use.mpo:
+        if self.use_mpo:
             self.use_mpo = True
-            self.trunc_num = config.attention_trunc
+            # self.trunc_num = config.attention_trunc
+            self.trunc_num = 100000
             logger.info("Check Using query with {}".format(self.trunc_num))
             logger.info("Check Using key/value with {}".format(self.trunc_num))
             # self.input_shape = (config.batch_size * config.max_seq_length, config.hidden_size)
+            if ctx_dim is None:
+                ctx_dim =config.hidden_size
             self.query = nn.Linear(config.hidden_size, self.all_head_size)
-            self.key = nn.Linear(config.hidden_size, self.all_head_size)
-            self.value = nn.Linear(config.hidden_size, self.all_head_size)
+            self.key = nn.Linear(ctx_dim, self.all_head_size)
+            self.value = nn.Linear(ctx_dim, self.all_head_size)
             self.mpo_input_shape, self.mpo_output_shape=[3,4,4,4,4],[4,4,4,4,3]
             # mpo_input_shape, mpo_output_shape, self.truncate_num = [2,3,4,4,5,4,4,2,2], [2,2,2,2,3,2,2,2,2]
             # mpo_input_shape, mpo_output_shape, self.truncate_num = [4,5,8,8,6,4], [2,3,4,4,4,2]
@@ -329,7 +332,7 @@ class BertAttention(nn.Module):
             self.key_mpo = LinearDecomMPO(self.mpo_input_shape, self.mpo_output_shape,self.trunc_num,tensor_learn=config.tensor_learn)
             self.value_mpo = LinearDecomMPO(self.mpo_input_shape, self.mpo_output_shape,self.trunc_num,tensor_learn=config.tensor_learn)
 
-            self.from_pretrained_mpo()
+            # self.from_pretrained_mpo()
         else:
             if ctx_dim is None:
                 ctx_dim =config.hidden_size
@@ -339,8 +342,8 @@ class BertAttention(nn.Module):
         ## modified
 
 
-        ## origin
-        # # visual_dim = 2048
+        # origin
+        # visual_dim = 2048
         # if ctx_dim is None:
         #     ctx_dim =config.hidden_size
         # self.query = nn.Linear(config.hidden_size, self.all_head_size)
@@ -355,17 +358,15 @@ class BertAttention(nn.Module):
         return x.permute(0, 2, 1, 3)
 
     def forward(self, hidden_states, context, attention_mask=None):
-        ## modified
+        # modified
         if self.use_mpo:
             mixed_query_layer = self.query_mpo(hidden_states)
+            mixed_key_layer = self.key_mpo(context)
+            mixed_value_layer = self.value_mpo(context)
         else:
             mixed_query_layer = self.query(hidden_states)
-        if self.use_mpo:
-            mixed_key_layer = self.key_mpo(hidden_states)
-            mixed_value_layer = self.value_mpo(hidden_states)
-        else:
-            mixed_key_layer = self.key(hidden_states)
-            mixed_value_layer = self.value(hidden_states)
+            mixed_key_layer = self.key(context)
+            mixed_value_layer = self.value(context)
 
 
         ## origin 
@@ -432,16 +433,20 @@ class BertAttOutput(nn.Module):
             self.use_mpo = True
             # self.input_shape = (config.batch_size * config.max_seq_length, config.hidden_size)
             self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-            self.trunc_num = config.attention_trunc
+            # self.trunc_num = config.attention_trunc
+            self.trunc_num = 100000
             self.mpo_input_shape, self.mpo_output_shape=[3,4,4,4,4],[4,4,4,4,3]
             # self.mpo_input_shape, self.mpo_output_shape = [2,2,2,2,3,2,2,2,2],[2,2,2,2,3,2,2,2,2]
             # self.mpo_input_shape, self.mpo_output_shape=[2,3,4,4,4,2],[2,3,4,4,4,2]
             self.dense_mpo = LinearDecomMPO(self.mpo_input_shape, self.mpo_output_shape, self.trunc_num,tensor_learn=config.tensor_learn)
-            self.from_pretrained_mpo()
+            # self.from_pretrained_mpo()
+        else:
+            self.dense = nn.Linear(config.hidden_size, config.hidden_size)
 
 
         ## origin
         # self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+
         self.LayerNorm = BertLayerNorm(config.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
@@ -455,6 +460,7 @@ class BertAttOutput(nn.Module):
 
         ## origin
         # hidden_states = self.dense(hidden_states)
+
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
         return hidden_states
@@ -486,7 +492,7 @@ class BertCrossattLayer(nn.Module):
 
 
 class BertSelfattLayer(nn.Module):
-    def __init__(self, config, use_mpo):
+    def __init__(self, config, use_mpo=False):
         super(BertSelfattLayer, self).__init__()
         self.self = BertAttention(config, use_mpo)
         self.output = BertAttOutput(config, use_mpo)
@@ -499,21 +505,21 @@ class BertSelfattLayer(nn.Module):
 
 
 class BertIntermediate(nn.Module):
-    def __init__(self, config, use_mpo):
+    def __init__(self, config, use_mpo=False):
         super(BertIntermediate, self).__init__()
         ## modified
         self.use_mpo = use_mpo
-        if self.use.mpo:
+        if self.use_mpo:
         # if "FFN_1" in config.mpo_layers:
             self.use_mpo = True
             self.dense = nn.Linear(config.hidden_size, config.intermediate_size)
             self.trunc_num = 1e6
-            self.input_shape = (config.batch_size * config.max_seq_length, config.hidden_size)
+            # self.input_shape = (config.batch_size * config.max_seq_length, config.hidden_size)
             self.mpo_input_shape, self.mpo_output_shape = [8,4,4,4,6],[3,4,4,4,4]
             # self.mpo_input_shape, self.mpo_output_shape = [4,4,4,4,4,3],[2,3,4,4,4,2]
             # self.mpo_input_shape, self.mpo_output_shape = [2,2,2,4,4,3,2,2,2],[2,2,2,2,3,2,2,2,2]
             self.dense_mpo = LinearDecomMPO(self.mpo_input_shape, self.mpo_output_shape, 1e6,tensor_learn=config.tensor_learn)
-            self.from_pretrained_mpo()
+            # self.from_pretrained_mpo()
         else:
             self.dense = nn.Linear(config.hidden_size, config.intermediate_size)
 
@@ -535,6 +541,7 @@ class BertIntermediate(nn.Module):
         
         ## origin
         # hidden_states = self.dense(hidden_states)
+
         hidden_states = self.intermediate_act_fn(hidden_states)
         return hidden_states
 
@@ -554,7 +561,7 @@ class BertIntermediate(nn.Module):
     #         logger.info("Check ffn rank:{} Total params: {}M".format(str(mpo.mpo_truncate_ranks),CalMPONum('linear',mpo.mpo_truncate_ranks)))
 
 class BertOutput(nn.Module):
-    def __init__(self, config, use_mpo):
+    def __init__(self, config, use_mpo=False):
         super(BertOutput, self).__init__()
         self.use_mpo = use_mpo
         # if "FFN_2" in config.mpo_layers:
@@ -563,18 +570,19 @@ class BertOutput(nn.Module):
             self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
             # self.trunc_num = config.linear_trunc
             self.trunc_num = 100000
-            self.input_shape = (config.batch_size * config.max_seq_length, config.hidden_size)
+            # self.input_shape = (config.batch_size * config.max_seq_length, config.hidden_size)
             self.mpo_input_shape, self.mpo_output_shape = [3, 4, 4, 4, 4],[4, 4, 8, 6, 4]
             # self.mpo_input_shape, self.mpo_output_shape = [2,3,4,4,4,2],[4,4,4,4,4,3]
             # self.mpo_input_shape, self.mpo_output_shape = [2,2,2,2,3,2,2,2,2],[2,2,2,4,4,3,2,2,2]
             self.dense_mpo = LinearDecomMPO(self.mpo_input_shape, self.mpo_output_shape, 100000 ,tensor_learn=config.tensor_learn)
-            self.from_pretrained_mpo()
+            # self.from_pretrained_mpo()
         else:
             self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
 
 
         ## origin
-        self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
+        # self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
+
         self.LayerNorm = BertLayerNorm(config.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
@@ -588,17 +596,23 @@ class BertOutput(nn.Module):
         
         ## origin
         # hidden_states = self.dense(hidden_states)
+
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
         return hidden_states
 
+    def from_pretrained_mpo(self):
+        if self.use_mpo:
+            mpo = MPO(self.mpo_input_shape, self.mpo_output_shape, self.trunc_num)
+            mpo_tensor_set, _, _ = mpo.matrix2mpo(self.dense.weight.data.cpu().numpy())
+            self.dense_mpo.from_pretrained(mpo_tensor_set,self.dense.bias)
 
 class BertLayer(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, use_mpo=False):
         super(BertLayer, self).__init__()
-        self.attention = BertSelfattLayer(config)
-        self.intermediate = BertIntermediate(config)
-        self.output = BertOutput(config)
+        self.attention = BertSelfattLayer(config, use_mpo)
+        self.intermediate = BertIntermediate(config, use_mpo)
+        self.output = BertOutput(config, use_mpo)
 
     def forward(self, hidden_states, attention_mask):
         attention_output = self.attention(hidden_states, attention_mask)
@@ -615,7 +629,7 @@ class BertLayer(nn.Module):
 
 
 class LXRTXLayer(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, use_mpo=False):
         super().__init__()
         # The cross-attention Layer
         self.visual_attention = BertCrossattLayer(config)
@@ -713,7 +727,7 @@ class LXRTEncoder(nn.Module):
         # Using self.layer instead of self.l_layer to support loading BERT weights.
 
         self.layer = nn.ModuleList(
-            [BertLayer(config) for _ in range(self.num_l_layers)]
+            [BertLayer(config, use_mpo=True) for _ in range(self.num_l_layers)]
         )
         # self.layer = nn.ModuleList(
         #     [modeling_bert.BertLayer(config) for _ in range(self.num_l_layers)]

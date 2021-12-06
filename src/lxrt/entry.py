@@ -96,7 +96,7 @@ class LXRTEncoder(nn.Module):
         # )
 
         # Build LXRT Model
-        arg_dict = {"mpo_layers":"attention"}
+        arg_dict = {"mpo_layers":"attention","tensor_learn":True}
         self.model = VisualBertForLXRFeature.from_pretrained(
             "data/bert-base-uncased.tar.gz",
             arg_dict=arg_dict,

@@ -4,7 +4,7 @@ from torch import nn as nn
 import torch
 import logging
 import os
-from vilt.compress_tools.Matrix2MPO_beta import MPO
+from compress_tools.Matrix2MPO_beta import MPO
 from torch.nn import functional as F
 from torch import nn
 

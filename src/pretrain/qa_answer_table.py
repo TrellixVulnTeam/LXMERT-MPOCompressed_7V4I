@@ -144,8 +144,9 @@ def load_lxmert_qa(path, model, label2ans):
     # Load Bert Weights
     bert_model_keys = set(model.lxrt_encoder.model.state_dict().keys())
     bert_loaded_keys = set(bert_state_dict.keys())
-    assert len(bert_model_keys - bert_loaded_keys) == 0
+    # assert len(bert_model_keys - bert_loaded_keys) == 0
     model.lxrt_encoder.model.load_state_dict(bert_state_dict, strict=False)
+    print("Loading Bert Weight")
 
     # Load Answer Logic FC Weights
     model_keys = set(model.state_dict().keys())

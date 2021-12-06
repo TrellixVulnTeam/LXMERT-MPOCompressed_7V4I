@@ -574,7 +574,7 @@ class BertOutput(nn.Module):
 
 
         ## origin
-        # self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
+        self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
         self.LayerNorm = BertLayerNorm(config.hidden_size, eps=1e-12)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
@@ -594,11 +594,11 @@ class BertOutput(nn.Module):
 
 
 class BertLayer(nn.Module):
-    def __init__(self, config, use_mpo):
+    def __init__(self, config):
         super(BertLayer, self).__init__()
-        self.attention = BertSelfattLayer(config, use_mpo)
-        self.intermediate = BertIntermediate(config, use_mpo)
-        self.output = BertOutput(config, use_mpo)
+        self.attention = BertSelfattLayer(config)
+        self.intermediate = BertIntermediate(config)
+        self.output = BertOutput(config)
 
     def forward(self, hidden_states, attention_mask):
         attention_output = self.attention(hidden_states, attention_mask)
@@ -839,15 +839,24 @@ class BertVisualObjHead(nn.Module):
             output[key] = self.decoder_dict[key](hidden_states)
         return output
 
-def step_trunc(self, step_num=0, step_train=True):
-        assert step_num > 0
-        if self.use_mpo:
-            mpo = MPO(self.mpo_input_shape, self.mpo_output_shape, step_num)
-            logger.info("Check FFN2 step trunc using: {}".format(step_num))
-            mpo_tensor_set = mpo.truncated_tensor(self.dense_mpo.tensor_set, step_train=step_train)
-            self.dense_mpo.step_trunc(mpo_tensor_set)
-            logger.info("Check ffn rank:{} Total params: {}M".format(str(mpo.mpo_truncate_ranks),CalMPONum('linear',mpo.mpo_truncate_ranks)))
 
+class BertPreTrainingHeads(nn.Module):
+    def __init__(self, config, bert_model_embedding_weights):
+        super(BertPreTrainingHeads, self).__init__()
+        self.predictions = BertLMPredictionHead(config, bert_model_embedding_weights)
+        self.seq_relationship = nn.Linear(config.hidden_size, 2)
+
+    def forward(self, sequence_output, pooled_output):
+        prediction_scores = self.predictions(sequence_output)
+        seq_relationship_score = self.seq_relationship(pooled_output)
+        return prediction_scores, seq_relationship_score
+
+
+class BertPreTrainedModel(nn.Module):
+    """ An abstract class to handle weights initialization and
+        a simple interface for dowloading and loading pretrained models.
+    """
+    def __init__(self, config, *inputs, **kwargs):
         super(BertPreTrainedModel, self).__init__()
         if not isinstance(config, BertConfig):
             raise ValueError(

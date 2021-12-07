@@ -34,6 +34,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, SmoothL1Loss
+from torch.nn import functional as F
 
 from .file_utils import cached_path
 
@@ -266,13 +267,52 @@ class BertConfig(object):
 
 BertLayerNorm = torch.nn.LayerNorm
 
+class EmbeddingMPO(nn.Module):
+    '''
+    use MPO decompose word embedding
+    '''
+    def __init__(self, num_embeddings, embedding_dim, mpo_input_shape, mpo_output_shape, truncate_num, **kwargs):
+        super(EmbeddingMPO, self).__init__()
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+        self.mpo = MPO(mpo_input_shape, mpo_output_shape, truncate_num)
+        self.tensor_set = None
+
+    def forward(self, input):
+        weight_rebuild = self.mpo.mpo2matrix(self.tensor_set)[:30522]
+        return F.embedding(input, weight_rebuild)
+
+    def step_trunc(self, tensor_set):
+        self.tensor_set = tensor_set
 
 class BertEmbeddings(nn.Module):
     """Construct the embeddings from word, position and token_type embeddings.
     """
-    def __init__(self, config):
+    def __init__(self, config, use_mpo=False):
         super(BertEmbeddings, self).__init__()
-        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=0)
+        self.use_mpo = use_mpo
+
+        ## modified 
+        # if 'word_embed' in config.mpo_layers:
+        if self.use_mpo:
+            self.use_mpo = True
+            self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=0)
+            # self.mpo_input_shape, self.mpo_output_shape, self.truncate_num = [4,8,20,12,4], [4,4,4,4,3], config.emb_trunc
+            self.emb_trunc = 1e6
+            self.mpo_input_shape, self.mpo_output_shape, self.truncate_num = [6,8,10,8,8], [4,4,4,4,3], self.emb_trunc
+            # mpo_input_shape, mpo_output_shape, self.truncate_num = [2,3,4,4,5,4,4,2,2], [2,2,2,2,3,2,2,2,2], config.emb_trunc 
+            # mpo_input_shape, mpo_output_shape, self.truncate_num = [4,5,8,8,6,4], [2,3,4,4,4,2], config.emb_trunc
+            logger.info("Check Using EmbeddingMPO with {}".format(self.truncate_num))
+            self.word_embeddings_mpo = EmbeddingMPO(None, config.hidden_size, self.mpo_input_shape, self.mpo_output_shape,
+                                                self.truncate_num)
+            self.mpo = MPO(self.mpo_input_shape, self.mpo_output_shape, self.truncate_num)
+            pad_num = np.prod(self.mpo_input_shape) - 30522
+            self.zeros_dim = (pad_num,) + tuple(self.word_embeddings.weight.data.shape[1:])
+        else:
+            self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=0)
+
+        ## origin
+        # self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=0)
         self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size, padding_idx=0)
         self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size, padding_idx=0)
 
@@ -288,7 +328,14 @@ class BertEmbeddings(nn.Module):
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
 
-        words_embeddings = self.word_embeddings(input_ids)
+        ## modified
+        if self.use_mpo:
+            words_embeddings = self.word_embeddings_mpo(input_ids)
+        else:
+            words_embeddings = self.word_embeddings(input_ids)
+
+        ## origin
+        # words_embeddings = self.word_embeddings(input_ids)
         position_embeddings = self.position_embeddings(position_ids)
         token_type_embeddings = self.token_type_embeddings(token_type_ids)
 
@@ -296,6 +343,15 @@ class BertEmbeddings(nn.Module):
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
         return embeddings
+
+    def from_pretrained_mpo(self):
+        mpo_tensor_set,_,_ = self.mpo.matrix2mpo(
+            np.concatenate((self.word_embeddings.weight.data.cpu().numpy(), np.zeros(self.zeros_dim).astype('float32')), 0))
+        self.word_embeddings_mpo.tensor_set = torch.nn.ParameterList(
+            [nn.Parameter(torch.from_numpy(i).cuda(), requires_grad=True) for i in mpo_tensor_set])
+        self.word_embeddings_mpo.tensor_set[2].requires_grad = False
+        del self.word_embeddings
+        print("Loading MPO Embedding Weight From Pretrained")
 
 
 class BertAttention(nn.Module):
@@ -659,17 +715,17 @@ class LXRTXLayer(nn.Module):
         super().__init__()
         # The cross-attention Layer
         self.use_mpo = use_mpo
-        self.visual_attention = BertCrossattLayer(config)
+        self.visual_attention = BertCrossattLayer(config, use_mpo)
 
         # Self-attention Layers
-        self.lang_self_att = BertSelfattLayer(config)
-        self.visn_self_att = BertSelfattLayer(config)
+        self.lang_self_att = BertSelfattLayer(config, use_mpo)
+        self.visn_self_att = BertSelfattLayer(config, use_mpo)
 
         # Intermediate and Output Layers (FFNs)
-        self.lang_inter = BertIntermediate(config)
-        self.lang_output = BertOutput(config)
-        self.visn_inter = BertIntermediate(config)
-        self.visn_output = BertOutput(config)
+        self.lang_inter = BertIntermediate(config, use_mpo)
+        self.lang_output = BertOutput(config, use_mpo)
+        self.visn_inter = BertIntermediate(config, use_mpo)
+        self.visn_output = BertOutput(config, use_mpo)
 
     def cross_att(self, lang_input, lang_attention_mask, visn_input, visn_attention_mask):
         # Cross Attention
@@ -706,6 +762,15 @@ class LXRTXLayer(nn.Module):
 
         return lang_output, visn_output
 
+    def from_pretrained_mpo(self):
+        if self.use_mpo:
+            self.visual_attention.from_pretrained_mpo()
+            self.lang_self_att.from_pretrained_mpo()
+            self.visn_self_att.from_pretrained_mpo()
+            self.lang_inter.from_pretrained_mpo()
+            self.lang_output.from_pretrained_mpo()
+            self.visn_inter.from_pretrained_mpo()
+            self.visn_output.from_pretrained_mpo()
 
 class VisualFeatEncoder(nn.Module):
     def __init__(self, config):
@@ -760,7 +825,7 @@ class LXRTEncoder(nn.Module):
         #     [modeling_bert.BertLayer(config) for _ in range(self.num_l_layers)]
         # )
         self.x_layers = nn.ModuleList(
-            [LXRTXLayer(config) for _ in range(self.num_x_layers)]
+            [LXRTXLayer(config, use_mpo=True) for _ in range(self.num_x_layers)]
         )
         self.r_layers = nn.ModuleList(
             [BertLayer(config, use_mpo=True) for _ in range(self.num_r_layers)]
@@ -792,6 +857,8 @@ class LXRTEncoder(nn.Module):
         for layer_module in self.layer:
             layer_module.from_pretrained_mpo()
         for layer_module in self.r_layers:
+            layer_module.from_pretrained_mpo()
+        for layer_module in self.x_layers:
             layer_module.from_pretrained_mpo()
         print("Loading MPO Weight From Pretrained")
 
@@ -1067,7 +1134,7 @@ class LXRTModel(BertPreTrainedModel):
 
     def __init__(self, config):
         super().__init__(config)
-        self.embeddings = BertEmbeddings(config)
+        self.embeddings = BertEmbeddings(config, use_mpo=True)
         self.encoder = LXRTEncoder(config)
         self.pooler = BertPooler(config)
         self.apply(self.init_bert_weights)
@@ -1117,6 +1184,7 @@ class LXRTModel(BertPreTrainedModel):
 
     def from_pretrained_mpo(self):
         self.encoder.from_pretrained_mpo()
+        self.embeddings.from_pretrained_mpo()
 
 class LXRTPretraining(BertPreTrainedModel):
     def __init__(self,

@@ -30,6 +30,16 @@ def get_data_tuple(splits: str, bs:int, shuffle=False, drop_last=False) -> DataT
     return DataTuple(dataset=dset, loader=data_loader, evaluator=evaluator)
 
 
+def get_parameter_number(net):
+    '''
+    :param net: model class
+    :return: params statistics
+    '''
+    total_num = sum(p.numel() for p in net.parameters()) / 1000 / 1000
+    trainable_num = sum(p.numel() for p in net.parameters() if p.requires_grad) / 1000 / 1000
+    return {'Total(M)': total_num, 'Trainable(M)': trainable_num}
+
+
 class VQA:
     def __init__(self):
         # Datasets
@@ -180,39 +190,39 @@ class VQA:
 if __name__ == "__main__":
     # Build Class
     vqa = VQA()
-
+    print(get_parameter_number(vqa.model))
     # Load VQA model weights
     # Note: It is different from loading LXMERT pre-trained weights.
     if args.load is not None:
         vqa.load(args.load)
 
     # Test or Train
-    if args.test is not None:
-        args.fast = args.tiny = False       # Always loading all data in test
-        if 'test' in args.test:
-            vqa.predict(
-                get_data_tuple(args.test, bs=950,
-                               shuffle=False, drop_last=False),
-                dump=os.path.join(args.output, 'test_predict.json')
-            )
-        elif 'val' in args.test:    
-            # Since part of valididation data are used in pre-training/fine-tuning,
-            # only validate on the minival set.
-            result = vqa.evaluate(
-                get_data_tuple('minival', bs=950,
-                               shuffle=False, drop_last=False),
-                dump=os.path.join(args.output, 'minival_predict.json')
-            )
-            print(result)
-        else:
-            assert False, "No such test option for %s" % args.test
-    else:
-        print('Splits in Train data:', vqa.train_tuple.dataset.splits)
-        if vqa.valid_tuple is not None:
-            print('Splits in Valid data:', vqa.valid_tuple.dataset.splits)
-            print("Valid Oracle: %0.2f" % (vqa.oracle_score(vqa.valid_tuple) * 100))
-        else:
-            print("DO NOT USE VALIDATION")
-        vqa.train(vqa.train_tuple, vqa.valid_tuple)
+    # if args.test is not None:
+    #     args.fast = args.tiny = False       # Always loading all data in test
+    #     if 'test' in args.test:
+    #         vqa.predict(
+    #             get_data_tuple(args.test, bs=950,
+    #                            shuffle=False, drop_last=False),
+    #             dump=os.path.join(args.output, 'test_predict.json')
+    #         )
+    #     elif 'val' in args.test:    
+    #         # Since part of valididation data are used in pre-training/fine-tuning,
+    #         # only validate on the minival set.
+    #         result = vqa.evaluate(
+    #             get_data_tuple('minival', bs=950,
+    #                            shuffle=False, drop_last=False),
+    #             dump=os.path.join(args.output, 'minival_predict.json')
+    #         )
+    #         print(result)
+    #     else:
+    #         assert False, "No such test option for %s" % args.test
+    # else:
+    #     print('Splits in Train data:', vqa.train_tuple.dataset.splits)
+    #     if vqa.valid_tuple is not None:
+    #         print('Splits in Valid data:', vqa.valid_tuple.dataset.splits)
+    #         print("Valid Oracle: %0.2f" % (vqa.oracle_score(vqa.valid_tuple) * 100))
+    #     else:
+    #         print("DO NOT USE VALIDATION")
+    #     vqa.train(vqa.train_tuple, vqa.valid_tuple)
 
 

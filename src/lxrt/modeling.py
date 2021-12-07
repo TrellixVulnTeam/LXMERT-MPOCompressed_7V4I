@@ -407,6 +407,9 @@ class BertAttention(nn.Module):
             self.key_mpo.from_pretrained(mpo_tensor_set, self.key.bias)
             mpo_tensor_set, _, _ = mpo.matrix2mpo(self.value.weight.data.cpu().numpy())
             self.value_mpo.from_pretrained(mpo_tensor_set, self.value.bias)
+            del self.query
+            del self.key
+            del self.value
 
     # def step_trunc(self,step_num=0, step_train=True):
     #         assert step_num > 0
@@ -470,6 +473,8 @@ class BertAttOutput(nn.Module):
             mpo = MPO(self.mpo_input_shape, self.mpo_output_shape, self.trunc_num)
             mpo_tensor_set, _, _ = mpo.matrix2mpo(self.dense.weight.data.cpu().numpy())
             self.dense_mpo.from_pretrained(mpo_tensor_set,self.dense.bias)
+            del self.dense
+
     # def step_trunc(self, step_num=0, step_train=True):
     #     assert step_num > 0
     #     if self.use_mpo:
@@ -562,6 +567,7 @@ class BertIntermediate(nn.Module):
             mpo = MPO(self.mpo_input_shape, self.mpo_output_shape, self.trunc_num)
             mpo_tensor_set,_,_ = mpo.matrix2mpo(self.dense.weight.data.cpu().numpy())
             self.dense_mpo.from_pretrained(mpo_tensor_set, self.dense.bias)
+            del self.dense
 
     # def step_trunc(self, step_num=0, step_train=True):
     #     assert step_num > 0
@@ -618,6 +624,7 @@ class BertOutput(nn.Module):
             mpo = MPO(self.mpo_input_shape, self.mpo_output_shape, self.trunc_num)
             mpo_tensor_set, _, _ = mpo.matrix2mpo(self.dense.weight.data.cpu().numpy())
             self.dense_mpo.from_pretrained(mpo_tensor_set,self.dense.bias)
+            del self.dense
 
 class BertLayer(nn.Module):
     def __init__(self, config, use_mpo=False):
@@ -756,7 +763,7 @@ class LXRTEncoder(nn.Module):
             [LXRTXLayer(config) for _ in range(self.num_x_layers)]
         )
         self.r_layers = nn.ModuleList(
-            [BertLayer(config) for _ in range(self.num_r_layers)]
+            [BertLayer(config, use_mpo=True) for _ in range(self.num_r_layers)]
         )
 
     def forward(self, lang_feats, lang_attention_mask,
@@ -784,7 +791,9 @@ class LXRTEncoder(nn.Module):
     def from_pretrained_mpo(self):
         for layer_module in self.layer:
             layer_module.from_pretrained_mpo()
-            print("Loading MPO Weight From Pretrained")
+        for layer_module in self.r_layers:
+            layer_module.from_pretrained_mpo()
+        print("Loading MPO Weight From Pretrained")
 
 
 class BertPooler(nn.Module):

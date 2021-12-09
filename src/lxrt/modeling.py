@@ -808,6 +808,9 @@ class LXRTEncoder(nn.Module):
         # Obj-level image embedding layer
         self.visn_fc = VisualFeatEncoder(config)
 
+        self.mpo_l = "l_layer" in config.mpo_layer
+        self.mpo_r = "r_layer" in config.mpo_layer
+        self.mpo_x = "x_layer" in config.mpo_layer
         # Number of layers
         self.num_l_layers = VISUAL_CONFIG.l_layers
         self.num_x_layers = VISUAL_CONFIG.x_layers
@@ -819,16 +822,16 @@ class LXRTEncoder(nn.Module):
         # Using self.layer instead of self.l_layer to support loading BERT weights.
 
         self.layer = nn.ModuleList(
-            [BertLayer(config, use_mpo=True) for _ in range(self.num_l_layers)]
+            [BertLayer(config, use_mpo=self.mpo_l) for _ in range(self.num_l_layers)]
         )
         # self.layer = nn.ModuleList(
         #     [modeling_bert.BertLayer(config) for _ in range(self.num_l_layers)]
         # )
         self.x_layers = nn.ModuleList(
-            [LXRTXLayer(config, use_mpo=True) for _ in range(self.num_x_layers)]
+            [LXRTXLayer(config, use_mpo=self.mpo_x) for _ in range(self.num_x_layers)]
         )
         self.r_layers = nn.ModuleList(
-            [BertLayer(config, use_mpo=True) for _ in range(self.num_r_layers)]
+            [BertLayer(config, use_mpo=self.mpo_r) for _ in range(self.num_r_layers)]
         )
 
     def forward(self, lang_feats, lang_attention_mask,
@@ -854,13 +857,18 @@ class LXRTEncoder(nn.Module):
         return lang_feats, visn_feats
 
     def from_pretrained_mpo(self):
-        for layer_module in self.layer:
-            layer_module.from_pretrained_mpo()
-        for layer_module in self.r_layers:
-            layer_module.from_pretrained_mpo()
-        for layer_module in self.x_layers:
-            layer_module.from_pretrained_mpo()
-        print("Loading MPO Weight From Pretrained")
+        if self.mpo_l:
+            for layer_module in self.layer:
+                layer_module.from_pretrained_mpo()
+            print("Loading MPO Weight From Pretrained L_layer")
+        if self.mpo_r:
+            for layer_module in self.r_layers:
+                layer_module.from_pretrained_mpo()
+            print("Loading MPO Weight From Pretrained R_layer")
+        if self.mpo_x:
+            for layer_module in self.x_layers:
+                layer_module.from_pretrained_mpo()
+            print("Loading MPO Weight From Pretrained X_layer")
 
 
 class BertPooler(nn.Module):
@@ -1134,7 +1142,8 @@ class LXRTModel(BertPreTrainedModel):
 
     def __init__(self, config):
         super().__init__(config)
-        self.embeddings = BertEmbeddings(config, use_mpo=True)
+        self.mpo_emb = "embedding" in config.mpo_layer
+        self.embeddings = BertEmbeddings(config, use_mpo=self.mpo_emb)
         self.encoder = LXRTEncoder(config)
         self.pooler = BertPooler(config)
         self.apply(self.init_bert_weights)
@@ -1184,7 +1193,8 @@ class LXRTModel(BertPreTrainedModel):
 
     def from_pretrained_mpo(self):
         self.encoder.from_pretrained_mpo()
-        self.embeddings.from_pretrained_mpo()
+        if self.mpo_emb:
+            self.embeddings.from_pretrained_mpo()
 
 class LXRTPretraining(BertPreTrainedModel):
     def __init__(self,

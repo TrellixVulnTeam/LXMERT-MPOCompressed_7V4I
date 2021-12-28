@@ -89,7 +89,8 @@ def parse_args():
     parser.add_argument("--numWorkers", dest='num_workers', default=0)
 
     # Mpo configuration
-    parser.add_argument("--mpo_layer", default=None)
+    parser.add_argument("--mpo_layer", default="")
+    parser.add_argument("--freeze_layer", default="")
 
     # Parse the arguments.
     args = parser.parse_args()

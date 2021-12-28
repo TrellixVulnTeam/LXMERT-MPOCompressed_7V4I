@@ -25,6 +25,8 @@ class TransposeLayer(nn.Module):
         super(TransposeLayer, self).__init__()
     def forward(self, x):
         return torch.transpose(x,0,1)
+
+
 class LinearDecomMPO(nn.Module):
     '''
     compress using MPO method

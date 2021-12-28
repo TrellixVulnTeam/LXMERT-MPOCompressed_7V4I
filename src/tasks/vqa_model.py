@@ -49,3 +49,5 @@ class VQAModel(nn.Module):
     def from_pretrained_mpo(self):
         self.lxrt_encoder.from_pretrained_mpo()
 
+    def load_from_pretrained_mpo(self):
+        self.lxrt_encoder.load_from_pretrained_mpo()

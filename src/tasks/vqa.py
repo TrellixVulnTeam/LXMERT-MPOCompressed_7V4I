@@ -13,6 +13,7 @@ from param import args
 from pretrain.qa_answer_table import load_lxmert_qa
 from tasks.vqa_model import VQAModel
 from tasks.vqa_data import VQADataset, VQATorchDataset, VQAEvaluator
+import IPython
 
 DataTuple = collections.namedtuple("DataTuple", 'dataset loader evaluator')
 
@@ -80,12 +81,12 @@ class VQA:
             t_total = int(batch_per_epoch * args.epochs)
             print("BertAdam Total Iters: %d" % t_total)
             from lxrt.optimization import BertAdam
-            self.optim = BertAdam(list(self.model.parameters()),
+            self.optim = BertAdam(list(filter(lambda p: p.requires_grad, self.model.parameters())),
                                   lr=args.lr,
                                   warmup=0.1,
                                   t_total=t_total)
         else:
-            self.optim = args.optimizer(self.model.parameters(), args.lr)
+            self.optim = args.optimizer(filter(lambda p: p.requires_grad, self.model.parameters()), args.lr)
         
         # Output Directory
         self.output = args.output
@@ -151,7 +152,7 @@ class VQA:
         self.model.eval()
         dset, loader, evaluator = eval_tuple
         quesid2ans = {}
-        for i, datum_tuple in enumerate(loader):
+        for i, datum_tuple in tqdm(enumerate(loader)):
             ques_id, feats, boxes, sent = datum_tuple[:4]   # Avoid seeing ground truth
             with torch.no_grad():
                 feats, boxes = feats.cuda(), boxes.cuda()
@@ -187,45 +188,50 @@ class VQA:
     def load(self, path):
         print("Load model from %s" % path)
         state_dict = torch.load("%s.pth" % path)
-        self.model.load_state_dict(state_dict)
+        self.model.load_state_dict(state_dict,strict=True)
 
+    def load_from_pretrained_mpo(self):
+        self.model.load_from_pretrained_mpo()
 
 if __name__ == "__main__":
     # Build Class
     vqa = VQA()
-    print(get_parameter_number(vqa.model))
+    
     # Load VQA model weights
     # Note: It is different from loading LXMERT pre-trained weights.
     if args.load is not None:
+        vqa.model.from_pretrained_mpo()
         vqa.load(args.load)
 
-    # # Test or Train
-    # if args.test is not None:
-    #     args.fast = args.tiny = False       # Always loading all data in test
-    #     if 'test' in args.test:
-    #         vqa.predict(
-    #             get_data_tuple(args.test, bs=950,
-    #                            shuffle=False, drop_last=False),
-    #             dump=os.path.join(args.output, 'test_predict.json')
-    #         )
-    #     elif 'val' in args.test:    
-    #         # Since part of valididation data are used in pre-training/fine-tuning,
-    #         # only validate on the minival set.
-    #         result = vqa.evaluate(
-    #             get_data_tuple('minival', bs=950,
-    #                            shuffle=False, drop_last=False),
-    #             dump=os.path.join(args.output, 'minival_predict.json')
-    #         )
-    #         print(result)
-    #     else:
-    #         assert False, "No such test option for %s" % args.test
-    # else:
-    #     print('Splits in Train data:', vqa.train_tuple.dataset.splits)
-    #     if vqa.valid_tuple is not None:
-    #         print('Splits in Valid data:', vqa.valid_tuple.dataset.splits)
-    #         print("Valid Oracle: %0.2f" % (vqa.oracle_score(vqa.valid_tuple) * 100))
-    #     else:
-    #         print("DO NOT USE VALIDATION")
-    #     vqa.train(vqa.train_tuple, vqa.valid_tuple)
+    print(get_parameter_number(vqa.model))
+
+    # Test or Train
+    if args.test is not None:
+        args.fast = args.tiny = False       # Always loading all data in test
+        if 'test' in args.test:
+            vqa.predict(
+                get_data_tuple(args.test, bs=950,
+                               shuffle=False, drop_last=False),
+                dump=os.path.join(args.output, 'test_predict.json')
+            )
+        elif 'val' in args.test:    
+            # Since part of valididation data are used in pre-training/fine-tuning,
+            # only validate on the minival set.
+            result = vqa.evaluate(
+                get_data_tuple('minival', bs=950,
+                               shuffle=False, drop_last=False),
+                dump=os.path.join(args.output, 'minival_predict.json')
+            )
+            print(result)
+        else:
+            assert False, "No such test option for %s" % args.test
+    else:
+        print('Splits in Train data:', vqa.train_tuple.dataset.splits)
+        if vqa.valid_tuple is not None:
+            print('Splits in Valid data:', vqa.valid_tuple.dataset.splits)
+            print("Valid Oracle: %0.2f" % (vqa.oracle_score(vqa.valid_tuple) * 100))
+        else:
+            print("DO NOT USE VALIDATION")
+        vqa.train(vqa.train_tuple, vqa.valid_tuple)
 
 

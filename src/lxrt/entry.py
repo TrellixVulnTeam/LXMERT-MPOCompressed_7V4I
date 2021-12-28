@@ -98,6 +98,7 @@ class LXRTEncoder(nn.Module):
         # Build LXRT Model
         arg_dict = {"tensor_learn":True}
         arg_dict["mpo_layer"] = args.mpo_layer
+        arg_dict["freeze_layer"] = args.freeze_layer
         self.model = VisualBertForLXRFeature.from_pretrained(
             "data/bert-base-uncased.tar.gz",
             arg_dict=arg_dict,
@@ -160,8 +161,8 @@ class LXRTEncoder(nn.Module):
         # Load weights to model
         self.model.load_state_dict(state_dict, strict=False)
 
-    def from_pretrained_mpo(self):
+    def from_pretrained_mpo(self):   
         self.model.from_pretrained_mpo()
 
-
-
+    def load_from_pretrained_mpo(self):
+        self.model.load_from_pretrained_mpo()

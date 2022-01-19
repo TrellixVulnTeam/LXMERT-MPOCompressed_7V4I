@@ -14,11 +14,12 @@ from pretrain.qa_answer_table import load_lxmert_qa
 from tasks.vqa_model import VQAModel
 from tasks.vqa_data import VQADataset, VQATorchDataset, VQAEvaluator
 import IPython
+from compress_tools.Linear2MPO import Linear2MPO
 
 DataTuple = collections.namedtuple("DataTuple", 'dataset loader evaluator')
 
 
-def get_data_tuple(splits: str, bs:int, shuffle=False, drop_last=False) -> DataTuple:
+def get_data_tuple(splits: str, bs: int, shuffle=False, drop_last=False) -> DataTuple:
     dset = VQADataset(splits)
     tset = VQATorchDataset(dset)
     evaluator = VQAEvaluator(dset)
@@ -37,7 +38,8 @@ def get_parameter_number(net):
     :return: params statistics
     '''
     total_num = sum(p.numel() for p in net.parameters()) / 1000 / 1000
-    trainable_num = sum(p.numel() for p in net.parameters() if p.requires_grad) / 1000 / 1000
+    trainable_num = sum(p.numel() for p in net.parameters()
+                        if p.requires_grad) / 1000 / 1000
     return {'Total(M)': total_num, 'Trainable(M)': trainable_num}
 
 
@@ -54,7 +56,7 @@ class VQA:
             )
         else:
             self.valid_tuple = None
-        
+
         # Model
         self.model = VQAModel(self.train_tuple.dataset.num_answers)
 
@@ -67,7 +69,7 @@ class VQA:
                            label2ans=self.train_tuple.dataset.label2ans)
             print("loading weights for fine-tuning")
             self.model.from_pretrained_mpo()
-        
+
         # GPU options
         self.model = self.model.cuda()
         if args.multiGPU:
@@ -86,15 +88,17 @@ class VQA:
                                   warmup=0.1,
                                   t_total=t_total)
         else:
-            self.optim = args.optimizer(filter(lambda p: p.requires_grad, self.model.parameters()), args.lr)
-        
+            self.optim = args.optimizer(
+                filter(lambda p: p.requires_grad, self.model.parameters()), args.lr)
+
         # Output Directory
         self.output = args.output
         os.makedirs(self.output, exist_ok=True)
 
     def train(self, train_tuple, eval_tuple):
         dset, loader, evaluator = train_tuple
-        iter_wrapper = (lambda x: tqdm(x, total=len(loader))) if args.tqdm else (lambda x: x)
+        iter_wrapper = (lambda x: tqdm(x, total=len(loader))
+                        ) if args.tqdm else (lambda x: x)
 
         best_valid = 0.
         with open(self.output + "/log.log", 'a') as f:
@@ -122,7 +126,8 @@ class VQA:
                     ans = dset.label2ans[l]
                     quesid2ans[qid.item()] = ans
 
-            log_str = "\nEpoch %d: Train %0.2f\n" % (epoch, evaluator.evaluate(quesid2ans) * 100.)
+            log_str = "\nEpoch %d: Train %0.2f\n" % (
+                epoch, evaluator.evaluate(quesid2ans) * 100.)
 
             if self.valid_tuple is not None:  # Do Validation
                 valid_score = self.evaluate(eval_tuple)
@@ -131,7 +136,8 @@ class VQA:
                     self.save("BEST")
 
                 log_str += "Epoch %d: Valid %0.2f\n" % (epoch, valid_score * 100.) + \
-                           "Epoch %d: Best %0.2f\n" % (epoch, best_valid * 100.)
+                           "Epoch %d: Best %0.2f\n" % (
+                               epoch, best_valid * 100.)
 
             print(log_str, end='')
 
@@ -153,7 +159,8 @@ class VQA:
         dset, loader, evaluator = eval_tuple
         quesid2ans = {}
         for i, datum_tuple in tqdm(enumerate(loader)):
-            ques_id, feats, boxes, sent = datum_tuple[:4]   # Avoid seeing ground truth
+            # Avoid seeing ground truth
+            ques_id, feats, boxes, sent = datum_tuple[:4]
             with torch.no_grad():
                 feats, boxes = feats.cuda(), boxes.cuda()
                 logit = self.model(feats, boxes, sent)
@@ -188,20 +195,40 @@ class VQA:
     def load(self, path):
         print("Load model from %s" % path)
         state_dict = torch.load("%s.pth" % path)
-        self.model.load_state_dict(state_dict,strict=True)
+        self.model.load_state_dict(state_dict, strict=True)
 
     def load_from_pretrained_mpo(self):
         self.model.load_from_pretrained_mpo()
 
+
+def Model2Mpo(module, prefix='', exclude_module=""):
+    for name, child in module._modules.items():
+        if name in exclude_module:
+            print(prefix+name+" excluded")
+            continue
+        if child is not None:
+            newmodule = getattr(module, name)
+            if isinstance(newmodule, nn.Linear):
+                print(prefix+name)
+                mpo_module = Linear2MPO(newmodule, tensor_learn=True)
+                mpo_module.from_pretrained(newmodule)
+                setattr(module, name, mpo_module)
+            Model2Mpo(child, prefix + name + '.',exclude_module="pooler,visn_fc")
+
+
 if __name__ == "__main__":
     # Build Class
     vqa = VQA()
-    
+
     # Load VQA model weights
     # Note: It is different from loading LXMERT pre-trained weights.
     if args.load is not None:
         vqa.model.from_pretrained_mpo()
         vqa.load(args.load)
+
+    # print(get_parameter_number(vqa.model))
+
+    # Model2Mpo(vqa.model.lxrt_encoder, exclude_module="pooler,visn_fc")
 
     print(get_parameter_number(vqa.model))
 
@@ -214,7 +241,7 @@ if __name__ == "__main__":
                                shuffle=False, drop_last=False),
                 dump=os.path.join(args.output, 'test_predict.json')
             )
-        elif 'val' in args.test:    
+        elif 'val' in args.test:
             # Since part of valididation data are used in pre-training/fine-tuning,
             # only validate on the minival set.
             result = vqa.evaluate(
@@ -229,9 +256,8 @@ if __name__ == "__main__":
         print('Splits in Train data:', vqa.train_tuple.dataset.splits)
         if vqa.valid_tuple is not None:
             print('Splits in Valid data:', vqa.valid_tuple.dataset.splits)
-            print("Valid Oracle: %0.2f" % (vqa.oracle_score(vqa.valid_tuple) * 100))
+            print("Valid Oracle: %0.2f" %
+                  (vqa.oracle_score(vqa.valid_tuple) * 100))
         else:
             print("DO NOT USE VALIDATION")
         vqa.train(vqa.train_tuple, vqa.valid_tuple)
-
-

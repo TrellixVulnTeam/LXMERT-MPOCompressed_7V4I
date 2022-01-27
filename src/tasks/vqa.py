@@ -14,6 +14,7 @@ from pretrain.qa_answer_table import load_lxmert_qa
 from tasks.vqa_model import VQAModel
 from tasks.vqa_data import VQADataset, VQATorchDataset, VQAEvaluator
 import IPython
+import time
 from compress_tools.Linear2MPO import Linear2MPO
 
 DataTuple = collections.namedtuple("DataTuple", 'dataset loader evaluator')
@@ -96,6 +97,7 @@ class VQA:
         os.makedirs(self.output, exist_ok=True)
 
     def train(self, train_tuple, eval_tuple):
+        s_time = time.process_time()
         dset, loader, evaluator = train_tuple
         iter_wrapper = (lambda x: tqdm(x, total=len(loader))
                         ) if args.tqdm else (lambda x: x)
@@ -144,7 +146,10 @@ class VQA:
             with open(self.output + "/log.log", 'a') as f:
                 f.write(log_str)
                 f.flush()
-
+        e_time = time.process_time()
+        with open(self.output + "/log.log", 'a') as f:
+            f.write(str(e_time-s_time))
+            f.flush()
         self.save("LAST")
 
     def predict(self, eval_tuple: DataTuple, dump=None):
@@ -226,11 +231,9 @@ if __name__ == "__main__":
         vqa.model.from_pretrained_mpo()
         vqa.load(args.load)
 
-    # print(get_parameter_number(vqa.model))
-
-    # Model2Mpo(vqa.model.lxrt_encoder, exclude_module="pooler,visn_fc")
-
     print(get_parameter_number(vqa.model))
+
+    # IPython.embed()
 
     # Test or Train
     if args.test is not None:

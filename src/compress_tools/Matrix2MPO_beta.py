@@ -12,6 +12,8 @@ import numpy as np
 import random
 import torch.nn as nn
 import torch
+import IPython
+import time
 seed = 1234
 random.seed(seed)
 np.random.seed(seed)
@@ -181,18 +183,32 @@ class MPO:
             t = tensor_set[i]
             r_l = mpo_trunc[i]
             r_r = mpo_trunc[i + 1]
-            if isinstance(tensor_set[i], nn.parameter.Parameter):
+            # if isinstance(tensor_set[i], nn.parameter.Parameter):
+            #     if step_train:
+            #         # 在用的mask方法
+            #         # mask_noise[r_l:, :, :, r_r:] = 0.0
+            #         # 与truncate一致的mask方法
+            #         mask_noise[r_l:, :, :, :] = 0.0
+            #         mask_noise[:r_l, :, :, r_r:] = 0.0
+            #         tensor_set[i].data = tensor_set[i].data * mask_noise
+            #         # self.mask_noise.append(mask_noise)
+            #         # self.zero_count += torch.nonzero(1.0 - mask_noise).shape[0]
+            #     else:
+            #         tensor_set[i].data = t[:r_l, :, :, :r_r]
+            # else:
+            #     assert "Check! tensor_set is not nn.parameter.Parameter"
+            if isinstance(tensor_set[i], np.ndarray):
                 if step_train:
                     # 在用的mask方法
                     # mask_noise[r_l:, :, :, r_r:] = 0.0
                     # 与truncate一致的mask方法
                     mask_noise[r_l:, :, :, :] = 0.0
                     mask_noise[:r_l, :, :, r_r:] = 0.0
-                    tensor_set[i].data = tensor_set[i].data * mask_noise
+                    tensor_set[i] = tensor_set[i] * mask_noise
                     # self.mask_noise.append(mask_noise)
                     # self.zero_count += torch.nonzero(1.0 - mask_noise).shape[0]
                 else:
-                    tensor_set[i].data = t[:r_l, :, :, :r_r]
+                    tensor_set[i] = t[:r_l, :, :, :r_r]
             else:
                 assert "Check! tensor_set is not nn.parameter.Parameter"
         return tensor_set

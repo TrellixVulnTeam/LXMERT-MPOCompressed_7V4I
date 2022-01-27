@@ -91,6 +91,11 @@ def parse_args():
     # Mpo configuration
     parser.add_argument("--mpo_layer", default="")
     parser.add_argument("--freeze_layer", default="")
+    parser.add_argument("--l_trunc_num", default="10000",type=int)
+    parser.add_argument("--r_trunc_num", default="10000",type=int)
+    parser.add_argument("--x_trunc_num", default="10000",type=int)
+    parser.add_argument("--emb_trunc_num", default="10000",type=int)
+
 
     # Parse the arguments.
     args = parser.parse_args()

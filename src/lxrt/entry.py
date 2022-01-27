@@ -99,6 +99,10 @@ class LXRTEncoder(nn.Module):
         arg_dict = {"tensor_learn":True}
         arg_dict["mpo_layer"] = args.mpo_layer
         arg_dict["freeze_layer"] = args.freeze_layer
+        arg_dict["l_trunc_num"] = args.l_trunc_num
+        arg_dict["r_trunc_num"] = args.r_trunc_num
+        arg_dict["x_trunc_num"] = args.x_trunc_num
+        arg_dict["emb_trunc_num"] = args.emb_trunc_num
         self.model = VisualBertForLXRFeature.from_pretrained(
             "data/bert-base-uncased.tar.gz",
             arg_dict=arg_dict,
